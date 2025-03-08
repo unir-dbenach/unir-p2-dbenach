@@ -1,17 +1,27 @@
+# Fichero main.tf
+#
+# 08-03-2025 - David Benach Díaz
+#
+# 
+# El fichero continene todo lo relacionado con la definición del proveedor. En este caso, Azure.
+#
+# Observaciones:
+#     Para ejecutar la creación de la infraestructura, se deberá ejecutar az login previamente a causa de no existir un Service Principal que permita conectar automáticamente 
+#        dado que no es posible crearlo con una suscripción de estudiante.
+#      
+
+# Proveedor y versión a descargar (versión compatible dentro del rango 4.x)
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
+  }
+}
+
+# Suscripción de Azure bajo la que se desplegaran los servicios.
 provider "azurerm" {
   features {}
-  subscription_id = "950677d6-f1a5-4989-ac11-47decf2fc946"
-}
-
-resource "azurerm_resource_group" "dbd_cpii_pruebatf" {
-  name     = "dbd_cpii_pruebatf"
-  location = "West Europe"
-}
-
-resource "azurerm_container_registry" "dbd_cpii_pruebatf_acr" {
-  name                = "dbdacr"
-  resource_group_name = azurerm_resource_group.dbd_cpii_pruebatf.name
-  location            = azurerm_resource_group.dbd_cpii_pruebatf.location
-  sku                 = "Basic"
-  admin_enabled       = false
+  subscription_id = var.subscripcion_id  # Almacenamos el dato en una variable para no tenerlo en claro en el fichero. Ver var.tf para más detalles.
 }
