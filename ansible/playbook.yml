@@ -1,0 +1,105 @@
+- name: Instalación de Podman, personalización de imágenes, subida al ACR y arranque del contenedor en Podman
+  hosts: all
+  become: true
+  
+  tasks:
+
+    # Instalación de software sobre el servidora ################################################################################
+
+    - name: Instalo Podman y los paquetes necesarios en la VM
+      ansible.builtin.apt:    
+        name: podman
+        state: present
+        update_cache: yes
+
+    # Personalización de la imagen de Apache httpd Server #######################################################################
+
+    - name: Creo un directorio local en la VM para dejar los ficheros de personalización de la VM
+      ansible.builtin.file:
+        path: /tmp/httpd
+        state: directory
+        mode: '0755'
+
+    - name: Creo en el directorio local de la VM el VirtualHost de Apache para publicar la página de It's OK por https
+      ansible.builtin.copy:
+        dest: /tmp/httpd/httpd-vhosts.conf
+        content: |
+          Listen 443
+          LoadModule ssl_module modules/mod_ssl.so
+          <VirtualHost *:443>
+              DocumentRoot "/usr/local/apache2/htdocs"
+              SSLEngine on
+              SSLCertificateFile "/usr/local/apache2/conf/server.crt"
+              SSLCertificateKeyFile "/usr/local/apache2/conf/server.key"
+
+              <Directory "/usr/local/apache2/htdocs">
+                  Options Indexes FollowSymLinks
+                  AllowOverride None
+                  AuthType Basic
+                  AuthName "Restricted Content"
+                  AuthUserFile "/usr/local/apache2/conf/.htpasswd"
+                  Require valid-user
+              </Directory>
+          </VirtualHost>
+        mode: '0644'
+
+    - name: Creo en el directorio local de la VM el certificado autofirmado
+      ansible.builtin.command: >
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048
+        -keyout /tmp/httpd/server.key -out /tmp/httpd/server.crt
+        -subj "/C=ES/ST=Barcelona/L=Barcelona/O=dbenachcp2/CN=dbenachcp2.cp2"
+      args:
+        creates: /tmp/httpd/server.crt
+
+    - name: Hago el build del contenedor de Apache httpd para personalizar la imagen con el certificado y la validación htpassdw
+      containers.podman.podman_image:
+        name: "{{ acr_url }}/podman/httpd"
+        tag: casopractico2
+        state: build
+        build:
+          container_file: |-
+            FROM docker.io/httpd:latest
+
+            # Copiar el fitxer de configuració personalitzat
+            COPY /httpd/httpd-vhosts.conf /usr/local/apache2/conf/extra/httpd-vhosts.conf
+
+            # Copiar els certificats SSL
+            COPY /httpd/server.crt /usr/local/apache2/conf/server.crt
+            COPY /httpd/server.key /usr/local/apache2/conf/server.key
+
+            # Copiar el fitxer de credencials per l'autenticació
+            RUN htpasswd -cb /usr/local/apache2/conf/.htpasswd admin password123
+            RUN sed -i "s/#Include conf\/extra\/httpd-vhosts.conf/Include conf\/extra\/httpd-vhosts.conf/g" /usr/local/apache2/conf/httpd.conf
+
+    # Subida de la imagen al ACR ################################################################################################
+
+    - name: Hago login al ACR
+      containers.podman.podman_login:
+        registry: "{{ acr_url }}"
+        username: "{{ acr_user }}"
+        password: "{{ acr_pwd }}"
+
+    - name: Hago el push de la imagen a instanciar en Podman
+      containers.podman.podman_image:
+        name: "{{ acr_url }}/podman/httpd"
+        tag: casopractico2
+        push: yes
+
+    # Limpieza del Podman para eliminar rastros de las imagenes y el build ######################################################
+    #   No es necesario, pero así obligo a Podman a bajar la imagen del ACR ya que no existe en local.
+
+    - name: Limpio el Podman eliminando imagenes, contenedores i volumenes, etc.
+      containers.podman.podman_prune:
+        system: true
+        system_all: true
+        system_volumes: true
+
+    # Arranque del contenedor en Podman #########################################################################################
+
+    - name: Arranco el contenedor de Apache httpd en Podman
+      containers.podman.podman_container:
+        name: httpd
+        image: "{{ acr_url }}/podman/httpd:casopractico2"
+        state: started
+        ports:
+          - "443:443"
