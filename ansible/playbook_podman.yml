@@ -1,13 +1,31 @@
+# Fichero playbook_podman.yml
+#
+# 09-03-2025 - David Benach Díaz
+#
+#
+# El fichero continene todo lo relacionado la puesta en marcha del ACR y el contenedor sobre Podman
+#
+# Observaciones:
+#    Se instala el software necesario en la VM (Podman y dependencias).
+#    Se baja la imagen de Apache HTTPD Server y se personaliza para:
+#       Incluir el certificado SSL para publicar por https.
+#       Habilitar el acceso con contraseÃ±a htpasswd.
+#    Se suben al ACR las imágenes a instanciar en el Podman y en el AKS.
+#    Se limpia el entorno de Podman.
+#    Se instancia el contenedor de Apache HTTPD Server en el Podman.
+#
+
+
 - name: Instalación de Podman, personalización de imágenes, subida al ACR y arranque del contenedor en Podman
   hosts: all
   become: true
-  
+
   tasks:
 
-    # Instalación de software sobre el servidora ################################################################################
+    # Instalación de software sobre el servidor #################################################################################
 
-    - name: Instalo Podman y los paquetes necesarios en la VM
-      ansible.builtin.apt:    
+    - name: Instalo Podman y los paquetes necesarios poe dependencias en la VM
+      ansible.builtin.apt:
         name: podman
         state: present
         update_cache: yes
@@ -20,7 +38,7 @@
         state: directory
         mode: '0755'
 
-    - name: Creo en el directorio local de la VM el VirtualHost de Apache para publicar la página de It's OK por https
+    - name: Creo en el directorio local de la VM el VirtualHost de Apache para incluir el certificado SSL
       ansible.builtin.copy:
         dest: /tmp/httpd/httpd-vhosts.conf
         content: |
@@ -57,19 +75,33 @@
         tag: casopractico2
         state: build
         build:
-          containerfile: |-
+          container_file: |-
             FROM docker.io/httpd:latest
 
-            # Copiar el fitxer de configuració personalitzat
+            # Copio el fichero que contiene la definición del Virtualhost.
             COPY /httpd/httpd-vhosts.conf /usr/local/apache2/conf/extra/httpd-vhosts.conf
 
-            # Copiar els certificats SSL
+            # Copio los certificados SSL
             COPY /httpd/server.crt /usr/local/apache2/conf/server.crt
             COPY /httpd/server.key /usr/local/apache2/conf/server.key
 
-            # Copiar el fitxer de credencials per l'autenticació
-            RUN htpasswd -cb /usr/local/apache2/conf/.htpasswd admin password123
+            # Creo el fichero htpasswd
+            RUN htpasswd -cb /usr/local/apache2/conf/.htpasswd unir pass123
+            # Modifico el fichero httpd.conf para leer el fichero de definición del VirtualHost.
             RUN sed -i "s/#Include conf\/extra\/httpd-vhosts.conf/Include conf\/extra\/httpd-vhosts.conf/g" /usr/local/apache2/conf/httpd.conf
+
+    # Preparación de la imagen a instanciar en AKS ##############################################################################
+
+    - name: Bajo la imagen que se va a instanciar en el AKS
+      containers.podman.podman_image:
+        name: docker.io/filebrowser/filebrowser
+        tag: latest
+
+    - name: Modifico el tag de la imagen
+      containers.podman.podman_tag:
+        image: docker.io/filebrowser/filebrowser:latest
+        target_names:
+          - "{{ acr_url }}/aks/filebrowser:casopractico2"
 
     # Subida de la imagen al ACR ################################################################################################
 
@@ -85,10 +117,16 @@
         tag: casopractico2
         push: yes
 
-    # Limpieza del Podman para eliminar rastros de las imagenes y el build ######################################################
-    #   No es necesario, pero así obligo a Podman a bajar la imagen del ACR ya que no existe en local.
+    - name: Hago el push de la imagen a instanciar en aks
+      containers.podman.podman_image:
+        name: "{{ acr_url }}/aks/filebrowser"
+        tag: casopractico2
+        push: yes
 
-    - name: Limpio el Podman eliminando imagenes, contenedores i volumenes, etc.
+    # Limpieza del Podman para eliminar rastros de las imagenes y el build ######################################################
+    #   No es necesario, pero así­ obligo a Podman a bajar la imagen del ACR ya que no existe en local.
+
+    - name: Limpio el Podman eliminando imagenes, contenedores, volumenes, etc.
       containers.podman.podman_prune:
         system: true
         system_all: true
@@ -101,5 +139,6 @@
         name: httpd
         image: "{{ acr_url }}/podman/httpd:casopractico2"
         state: started
+        restart_policy: always
         ports:
           - "443:443"

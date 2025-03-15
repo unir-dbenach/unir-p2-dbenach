@@ -1,0 +1,177 @@
+# Fichero playbook_aks.yml
+#
+# 09-03-2025 - David Benach Díaz
+#
+#
+# El fichero continene todo lo relacionado la puesta en marcha del pod en el AKS
+#
+# Observaciones:
+#     Creamos el namespace y las secrets para acceder al ACR y al storage.
+#     Creamos el volumen persistente.
+#     Creamos el Deploymment que instanciará el Pod y el servicio que lo publicará en Internet.
+#         El servicio es de tipo loadBalancer. Esto hará que Azure asigne IP pública.
+#     Consultamos el servicio y extraemos la IP pública.
+#
+
+- name: Despliegue del pod en el AKS
+  hosts: localhost
+
+  tasks:
+
+    - name: Creación del namespace filebrowser
+      kubernetes.core.k8s:
+        name: filebrowser
+        api_version: v1
+        kind: Namespace
+        state: present
+        kubeconfig: "{{ konfig }}"
+
+    - name: Creación del secret que contiene las credenciales de acceso al ACR
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: "{{ konfig }}"
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: acr-secret
+            namespace: filebrowser
+          type: kubernetes.io/dockerconfigjson
+          data:
+            .dockerconfigjson: "{{ {'auths': { acr_url: {'username': acr_user, 'password': acr_pwd} } } | to_json | b64encode }}"
+
+    - name: Creación del acceso que continen las credenciales de acceso al Azure Storage
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: "{{ konfig }}"
+        namespace: filebrowser
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: storage-secret
+            namespace: filebrowser
+          type: Opaque
+          data:
+            azurestorageaccountname: "{{ storagename | b64encode }}"
+            azurestorageaccountkey: "{{ storagekey | b64encode }}"
+
+    - name: Creación del volumen persistente para la persistencia de datos
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: "{{ konfig }}"
+        namespace: filebrowser
+        definition:
+          apiVersion: v1
+          kind: PersistentVolume
+          metadata:
+            name: filebrowser-srv
+            namespace: filebrowser
+          spec:
+            capacity:
+              storage: 1Gi
+            volumeMode: Filesystem
+            accessModes:
+              - ReadWriteMany
+            persistentVolumeReclaimPolicy: Retain
+            storageClassName: azurefile
+            azureFile:
+              secretName: storage-secret
+              shareName: "{{ storageshare }}"
+              readOnly: false
+
+    - name: Creación del Claim para presentar el volumen al Pod
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: "{{ konfig }}"
+        namespace: filebrowser
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: filebrowser-srv
+            namespace: filebrowser
+          spec:
+            storageClassName: azurefile
+            accessModes:
+              - ReadWriteMany
+            resources:
+              requests:
+                storage: 1Gi
+            volumeName: filebrowser-srv
+
+    - name: Creación del deployment filebrowser donde se indica el pod e imagen a instanciar y volumen persistente a montar.
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: "{{ konfig }}"
+        namespace: filebrowser
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: filebrowser
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: filebrowser
+            template:
+              metadata:
+                labels:
+                  app: filebrowser
+              spec:
+                containers:
+                  - name: filebrowser
+                    image: "{{ acr_url }}/aks/filebrowser:casopractico2"
+                    ports:
+                      - containerPort: 80
+                    imagePullPolicy: Always
+                    volumeMounts:
+                    - mountPath: /srv
+                      name: filebrowser-srv
+                volumes:
+                  - name: filebrowser-srv
+                    persistentVolumeClaim:
+                      claimName: filebrowser-srv
+                imagePullSecrets:
+                  - name: acr-secret
+
+    - name: Creación del servicio para publicar la aplicación al exterior (tipo loadBalancer que implica que Azure asigne IP pública)
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: "{{ konfig }}"
+        namespace: filebrowser
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: filebrowser
+          spec:
+            selector:
+              app: filebrowser
+            ports:
+              - protocol: TCP
+                port: 80
+                targetPort: 80
+            type: LoadBalancer
+
+    - name: Pausamos la ejecución del playbook durante 10 segundos para dar tiempo a crear el servicio
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: Consultamos el servicio creado en el paso anterior
+      kubernetes.core.k8s:
+        kubeconfig: "{{ konfig }}"
+        kind: Service
+        namespace: filebrowser
+        name: filebrowser
+      register: lb_service
+
+    - name: Mostramos la IP pública del servicio por pantalla
+      debug:
+        msg: "La IP de AKS es: {{ lb_service.result.status.loadBalancer.ingress[0].ip }}"
+
+    - name: Escribimos la IP pública del servicio al fichero terraform.dbd
+      copy:
+        content: "{{ lb_service.result.status.loadBalancer.ingress[0].ip }}"
+        dest: "terraform.dbd"

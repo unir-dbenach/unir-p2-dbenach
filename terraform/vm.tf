@@ -27,7 +27,7 @@ resource "azurerm_public_ip" "dbd_cp2_podmanvm_publicip" {
 
 # Creo la interface de red y asigno la IP pública además de la privada:
 resource "azurerm_network_interface" "dbd_cp2_podmanvm_nic" {
-  name                      = "dbd_cp2_podmanvmnic"
+  name                      = "dbdcp2podmanvmnic"
   location                  = azurerm_resource_group.dbd_cp2_rg.location
   resource_group_name       = azurerm_resource_group.dbd_cp2_rg.name
 
@@ -74,13 +74,14 @@ resource "azurerm_linux_virtual_machine" "dbd_cp2_podmanvm" {
   #Ejecuto el playbook de Ansible para configurar la VM, bajar la imagen de contenedor de Podman y personalizarla, subir la imagen al ACR y arrancar el contenedor con Podman
   provisioner "local-exec" {
     command = <<EOT
-      ansible-playbook -i '${self.public_ip_address},,' -u dbduser playbook.yml \
+      sleep 30  # espero 30 segundos para asegurar que el servicio ssh en la VM esté levantado
+      ansible-playbook -i '${self.public_ip_address},,' -u dbduser playbook_podman.yml \
       --extra-vars "acr_url=$(terraform output -raw acr_url) acr_user=$(terraform output -raw acr_user) acr_pwd=$(terraform output -raw acr_pwd)"   # Paso las credenciales al Ansible mediante los outputs.
     EOT
   }
 }
 
-# Aginación del NSG a la NIC para habilitar el acceso desde Internet:
+# Asignación del NSG a la NIC para habilitar el acceso desde Internet:
 resource "azurerm_network_interface_security_group_association" "dbd_cp2_podmanmv_nsg" {
   network_interface_id = azurerm_network_interface.dbd_cp2_podmanvm_nic.id
   network_security_group_id = azurerm_network_security_group.dbd_cp2_nsg.id
@@ -89,4 +90,5 @@ resource "azurerm_network_interface_security_group_association" "dbd_cp2_podmanm
 # Nos interesa saber la IP pública que ha asignado Azure:
 output "vm_public_ip" {
   value = azurerm_public_ip.dbd_cp2_podmanvm_publicip.ip_address
+  description = "Ip pública de la máquina virtual"
 }
