@@ -23,3 +23,24 @@ variable "zona" {
   type        = string
   default     = "West Europe"
 }
+
+# Variable que va a contener el tipo de máquina virtual que usaremos (define las CPUs y la RAM que se asignaran).
+variable "tipovm" {
+  description = "Tipo de máquina virtual a utilizar"
+  type        = string
+  default     = "Standard_B2s"
+}
+
+# Variable que va a contener el nombre del usuario que se va a dar de alta para acceder y administrar la VM.
+variable "usuarioadmin" {
+  description = "Nombre del usuario administrador del la VM"
+  type        = string
+  default     = "dbduser"
+}
+
+# Variable que va a contener el nombre del usuario que se va a dar de alta para acceder y administrar la VM.
+variable "tipodisco" {
+  description = "Tipo de disco a user en la VM"
+  type        = string
+  default     = "Standard_LRS"
+}

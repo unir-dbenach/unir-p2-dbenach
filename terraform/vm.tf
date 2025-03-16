@@ -25,6 +25,12 @@ resource "azurerm_public_ip" "dbd_cp2_podmanvm_publicip" {
   allocation_method            = "Static"
 }
 
+# Nos interesa saber la IP pública que ha asignado Azure:
+output "vm_public_ip" {
+  value = azurerm_public_ip.dbd_cp2_podmanvm_publicip.ip_address
+  description = "Ip pública de la máquina virtual"
+}
+
 # Creo la interface de red y asigno la IP pública además de la privada:
 resource "azurerm_network_interface" "dbd_cp2_podmanvm_nic" {
   name                      = "dbdcp2podmanvmnic"
@@ -40,27 +46,33 @@ resource "azurerm_network_interface" "dbd_cp2_podmanvm_nic" {
   }
 }
 
+# Nos interesa saber el usuario con el que nos vamos a conectar a la VM:
+output "vm_admin_user" {
+  value = var.usuarioadmin
+  description = "Usuario administrdor de la VM"
+}
+
 # Creo la máquina virtual asignando la interface de red:
 resource "azurerm_linux_virtual_machine" "dbd_cp2_podmanvm" {
   name                = "dbdcp2podmanvm"
   resource_group_name = azurerm_resource_group.dbd_cp2_rg.name
   location            = azurerm_resource_group.dbd_cp2_rg.location
-  size                = "Standard_B2s"                                  # Tipo de máquina virtual.
-  admin_username      = "dbduser"                                       # Nombre de usuario de sistema.
+  size                = var.tipovm
+  admin_username      = var.usuarioadmin
 
   network_interface_ids = [azurerm_network_interface.dbd_cp2_podmanvm_nic.id]
 
   # Deshabilito el acceso con contraseña y añado la clave pública de acceso:
   disable_password_authentication = true
   admin_ssh_key {
-    username   = "dbduser"
+    username   = var.usuarioadmin
     public_key = file("~/.ssh/id_rsa.pub")  # En el PC local debe existir el fichero con la clave pública
   }
 
   # Tipo de disco que se creará.
   os_disk {
     caching              = "ReadWrite"
-    storage_account_type = "Standard_LRS"
+    storage_account_type = var.tipodisco
   }
 
   # Imagen del sistema que se va a instalar
@@ -75,7 +87,7 @@ resource "azurerm_linux_virtual_machine" "dbd_cp2_podmanvm" {
   provisioner "local-exec" {
     command = <<EOT
       sleep 30  # espero 30 segundos para asegurar que el servicio ssh en la VM esté levantado
-      ansible-playbook -i '${self.public_ip_address},,' -u dbduser playbook_podman.yml \
+      ansible-playbook -i '${self.public_ip_address},,' -u $(terraform output -raw vm_admin_user) playbook_podman.yml \
       --extra-vars "acr_url=$(terraform output -raw acr_url) acr_user=$(terraform output -raw acr_user) acr_pwd=$(terraform output -raw acr_pwd)"   # Paso las credenciales al Ansible mediante los outputs.
     EOT
   }
@@ -85,10 +97,4 @@ resource "azurerm_linux_virtual_machine" "dbd_cp2_podmanvm" {
 resource "azurerm_network_interface_security_group_association" "dbd_cp2_podmanmv_nsg" {
   network_interface_id = azurerm_network_interface.dbd_cp2_podmanvm_nic.id
   network_security_group_id = azurerm_network_security_group.dbd_cp2_nsg.id
-}
-
-# Nos interesa saber la IP pública que ha asignado Azure:
-output "vm_public_ip" {
-  value = azurerm_public_ip.dbd_cp2_podmanvm_publicip.ip_address
-  description = "Ip pública de la máquina virtual"
 }
