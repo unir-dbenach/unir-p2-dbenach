@@ -10,4 +10,4 @@
 #   
 
 # ID de la subscripción sobre la que se van a definir los servicios.
-subscripcion_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+suscripcion_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"

@@ -23,5 +23,5 @@ terraform {
 # Suscripción de Azure bajo la que se desplegaran los servicios.
 provider "azurerm" {
   features {}
-  subscription_id = var.subscripcion_id  # Almacenamos el dato en una variable para no tenerlo en claro en el fichero. Ver var.tf para más detalles.
+  subscription_id = var.suscripcion_id  # Almacenamos el dato en una variable para no tenerlo en claro en el fichero. Ver var.tf para más detalles.
 }

@@ -13,5 +13,5 @@
 # Definición del resource group:
 resource "azurerm_resource_group" "dbd_cp2_rg" {
   name     = "dbdcp2rg"
-  location = "West Europe"
+  location = var.zona
 }

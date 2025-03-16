@@ -22,27 +22,22 @@ resource "azurerm_container_registry" "dbd_cp2_acr" {
   public_network_access_enabled = true
 }
 
-# Consulto el ACR creado para recopilar la información y poder extraer los outputs siguientes.
-data "azurerm_container_registry" "dbd_cp2_acr" {
-  name                = azurerm_container_registry.dbd_cp2_acr.name
-  resource_group_name = azurerm_resource_group.dbd_cp2_rg.name
-}
-
-# Extraigo la contraseña de acceso.
-output "acr_pwd" {
-  value       = data.azurerm_container_registry.dbd_cp2_acr.admin_password
-  description = "Contraseña de acceso al ACR"
-  sensitive = true
-}
-
-# Extraigo el usuario de acceso.
-output "acr_user" {
-  value       = data.azurerm_container_registry.dbd_cp2_acr.admin_username
-  description = "Usuario de acceso al ACR"
-}
-
 # Extraigo la URL de acceso.
 output "acr_url" {
   value       = azurerm_container_registry.dbd_cp2_acr.login_server
   description = "URL de acceso al ACR"
 }
+
+# Extraigo el usuario de acceso.
+output "acr_user" {
+  value       = azurerm_container_registry.dbd_cp2_acr.admin_username
+  description = "Usuario de acceso al ACR"
+}
+
+# Extraigo la contraseña de acceso.
+output "acr_pwd" {
+  value       = azurerm_container_registry.dbd_cp2_acr.admin_password
+  description = "Contraseña de acceso al ACR"
+  sensitive   = true
+}
+
