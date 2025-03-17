@@ -21,7 +21,7 @@ resource "azurerm_kubernetes_cluster" "dbd_cp2_aks" {
   default_node_pool {
     name       = "default"
     node_count = 1
-    vm_size    = "Standard_B2s"   # Tipo de VM que se usará
+    vm_size    = var.tipovm   # Tipo de VM que se usará
   }
 
   identity {
@@ -87,7 +87,7 @@ data "local_file" "lee_lb_ip" {
 }
 
 # Despues, leemos el recurso de datos para asignar al output el contenido (la IP que contiene el fichero terraform.dbd)
-output "lb_public_ip" {
+output "aks_public_ip" {
   value = data.local_file.lee_lb_ip.content
   description = "Ip pública de acceso a la aplicación que sirve el AKS"
 }
